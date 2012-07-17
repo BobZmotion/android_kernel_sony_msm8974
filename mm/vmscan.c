@@ -2762,6 +2762,9 @@ static void kswapd_try_to_sleep(pg_data_t *pgdat, int order, int classzone_idx)
 		 */
 		set_pgdat_percpu_threshold(pgdat, calculate_normal_threshold);
 
+		if (!kthread_should_stop())
+			schedule();
+
 		/*
 		 * Compaction records what page blocks it recently failed to
 		 * isolate pages from and skips them in the future scanning.
@@ -2769,9 +2772,6 @@ static void kswapd_try_to_sleep(pg_data_t *pgdat, int order, int classzone_idx)
 		 * that pages and compaction may succeed so reset the cache.
 		 */
 		reset_isolation_suitable(pgdat);
-
-		if (!kthread_should_stop())
-			schedule();
 
 		set_pgdat_percpu_threshold(pgdat, calculate_pressure_threshold);
 	} else {
