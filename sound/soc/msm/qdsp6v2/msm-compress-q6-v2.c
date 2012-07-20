@@ -561,6 +561,8 @@ static int msm_compr_configure_dsp(struct snd_compr_stream *cstream)
 
 	prtd->bits_per_sample = bits_per_sample;
 
+	prtd->bits_per_sample = bits_per_sample;
+
 	pr_debug("%s: stream_id %d\n", __func__, ac->stream_id);
 	ret = q6asm_stream_open_write_v2(ac,
 				prtd->codec, bits_per_sample,
