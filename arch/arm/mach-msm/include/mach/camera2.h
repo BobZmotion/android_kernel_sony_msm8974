@@ -94,6 +94,7 @@ struct msm_camera_sensor_board_info {
 	struct msm_sensor_init_params *sensor_init_params;
 	const char *misc_regulator;
 	struct msm_camera_power_ctrl_t power_info;
+	struct msm_camera_sensor_slave_info *cam_slave_info;
 };
 
 enum msm_camera_i2c_cmd_type {

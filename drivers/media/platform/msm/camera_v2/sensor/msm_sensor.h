@@ -73,6 +73,9 @@ struct msm_sensor_ctrl_t {
 	uint16_t clk_info_size;
 	void *misc_regulator;
 	enum msm_sensor_state_t sensor_state;
+	uint8_t is_probe_succeed;
+	uint32_t id;
+	struct device_node *of_node;
 };
 
 int32_t msm_sensor_config(struct msm_sensor_ctrl_t *s_ctrl,
