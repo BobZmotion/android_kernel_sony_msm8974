@@ -82,24 +82,6 @@ static void mhl_pf_external_notify(int data)
 	hdmi_mhl_ops.set_upstream_hpd(hdmi_pdev, (uint8_t)data);
 }
 
-/*
- * @sw: 1 switches to mhl. 0 switches to usb.
- */
-static void mhl_pf_switch_to_mhl_or_usb(int sw)
-{
-	/* switch gpio to MHL/USB from USB/MHL */
-	/* todo : must use dtsi for gpio */
-	gpio_set_value(switch_sel_1_gpio, sw);
-	gpio_set_value(switch_sel_2_gpio, sw);
-	pr_debug("%s: gpio(%d) : %d", __func__,
-			 switch_sel_1_gpio,
-			 gpio_get_value(switch_sel_1_gpio));
-	pr_debug("%s: gpio(%d) : %d", __func__,
-			 switch_sel_2_gpio,
-			 gpio_get_value(switch_sel_2_gpio));
-	msleep(20);
-}
-
 static bool mhl_pf_is_switch_to_usb(void)
 {
 	if ((gpio_get_value(GPIO_MHL_SWITCH_SEL_1) == 0) &&
@@ -160,7 +142,18 @@ int mhl_pf_switch_to_usb(void)
 	if (mhl_pf_is_switch_to_usb())
 		return MHL_SUCCESS;
 
-	mhl_pf_switch_to_mhl_or_usb(0);
+	/* switch gpio to USB from MHL */
+	/* todo : must use dtsi for gpio */
+	gpio_set_value(GPIO_MHL_SWITCH_SEL_1, 0);
+	gpio_set_value(GPIO_MHL_SWITCH_SEL_2, 0);
+	pr_debug("%s: gpio(%d) : %d", __func__,
+			 GPIO_MHL_SWITCH_SEL_1,
+			 gpio_get_value(GPIO_MHL_SWITCH_SEL_1));
+	pr_debug("%s: gpio(%d) : %d", __func__,
+			 GPIO_MHL_SWITCH_SEL_2,
+			 gpio_get_value(GPIO_MHL_SWITCH_SEL_2));
+
+	msleep(20);
 
 	if (!notify_usb_online) {
 		pr_warn("%s: no notify_usb_online registration\n", __func__);
@@ -180,23 +173,6 @@ int mhl_pf_switch_to_usb(void)
 	return MHL_SUCCESS;
 }
 EXPORT_SYMBOL(mhl_pf_switch_to_usb);
-
-int mhl_pf_switch_to_mhl(void)
-{
-	pr_debug("%s:", __func__);
-	isDiscoveryCalled = true;
-
-	if (!mhl_pf_is_switch_to_usb())
-	   return MHL_SUCCESS;
-
-	mhl_pf_switch_to_mhl_or_usb(1);
-
-	if (notify_usb_online)
-	   mhl_pf_external_notify(1);
-
-	return MHL_SUCCESS;
-}
-EXPORT_SYMBOL(mhl_pf_switch_to_mhl);
 
 /**
  * mhl_pf_switch_register_cb: register
@@ -271,8 +247,18 @@ static int mhl_pf_switch_device_discovery(void *data,
 	isDiscoveryCalled = true;
 	usb_ctx = ctx;
 
-	mhl_pf_switch_to_mhl_or_usb(1);
+	/* switch gpio to MHL from USB */
+	/* todo : must use dtsi for gpio */
+	gpio_set_value(GPIO_MHL_SWITCH_SEL_1, 1);
+	gpio_set_value(GPIO_MHL_SWITCH_SEL_2, 1);
+	pr_debug("%s: gpio(%d) : %d", __func__,
+			 GPIO_MHL_SWITCH_SEL_1,
+			 gpio_get_value(GPIO_MHL_SWITCH_SEL_1));
+	pr_debug("%s: gpio(%d) : %d", __func__,
+			 GPIO_MHL_SWITCH_SEL_2,
+			 gpio_get_value(GPIO_MHL_SWITCH_SEL_2));
 
+	msleep(20);
 	if (!notify_usb_online)
 		notify_usb_online = usb_notify_cb;
 	if (device_discovery_cb) {

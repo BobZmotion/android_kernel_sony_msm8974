@@ -15,7 +15,6 @@
 #define __MHL_H__
 
 #include <linux/module.h>
-#include <linux/i2c.h>
 
 /*
  * Debug print
@@ -42,12 +41,6 @@ typedef enum {
 	HPD_CTRL_PUSH_PULL
 } hpd_control_mode;
 
-struct mhl_tx_ctrl {
-	struct i2c_client *i2c_handle;
-	struct class *mhlclass;
-	struct device *pdev;
-};
-
 /***** mhl_platform.c *****/
 void mhl_pf_chip_power_on(void);
 void mhl_pf_chip_power_off(void);
@@ -60,7 +53,6 @@ const char *mhl_pf_get_device_name(void);
 int mhl_pf_get_irq_number(void);
 struct i2c_client *mhl_pf_get_i2c_client(void);
 int mhl_pf_switch_to_usb(void);
-int mhl_pf_switch_to_mhl(void);
 void mhl_pf_switch_register_cb(int (*device_discovery)(void *context_cb),
 								void *context);
 void mhl_pf_switch_unregister_cb(void);

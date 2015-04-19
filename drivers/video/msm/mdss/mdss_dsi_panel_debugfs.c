@@ -43,8 +43,6 @@ static struct dsi_buf debug_rx_buf;
 #define TMP_BUF_SZ 128
 #define MAX_WRITE_DATA 100
 
-#define MAX_DEBUG_READ_CMD 2
-
 enum dbg_cmd_type {
 	DCS,
 	GEN,
@@ -65,7 +63,7 @@ static void update_res_buf(char *string)
 
 static void reset_res_buf(void)
 {
-	kzfree(res_buf);
+	kfree(res_buf);
 	res_buf = NULL;
 	buf_sz = 0;
 }
@@ -153,7 +151,7 @@ static int setup_reg_access(char **buf, const char __user *ubuf, size_t count)
 	return 0;
 
 exit:
-	kzfree(*buf);
+	kfree(*buf);
 	return ret;
 }
 
@@ -197,57 +195,57 @@ exit:
 	return ret;
 }
 
-u32 panel_cmd_read(struct mdss_dsi_ctrl_pdata *ctrl,
-		struct dsi_cmd_desc *cmds, void (*fxn)(int),
-		char *rbuf, int len)
+static int prepare_for_reg_access(struct msm_fb_data_type *mfd)
 {
-	struct dcs_cmd_req cmdreq;
-	struct mdss_panel_info *pinfo;
+	struct mdss_panel_data *pdata;
+	int ret = 0;
+	struct mdss_mdp_ctl *ctl;
+	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
 
-	pinfo = &(ctrl->panel_data.panel_info);
+	ctl = mfd_to_ctl(mfd);
+	if (!ctl)
+		return -ENODEV;
 
-	memset(&cmdreq, 0, sizeof(cmdreq));
-	cmdreq.cmds = cmds;
-	cmdreq.cmds_cnt = 1;
-	cmdreq.flags = CMD_REQ_RX | CMD_REQ_COMMIT;
-	cmdreq.rlen = len;
-	cmdreq.rbuf = rbuf;
-	cmdreq.cb = fxn; /* call back */
+	pdata = dev_get_platdata(&mfd->pdev->dev);
+	if (!pdata) {
+		pr_err("%s: no panel connected\n", __func__);
+		return -ENODEV;
+	}
+
+	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
+				panel_data);
 
 	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON, false);
-	mdss_dsi_cmdlist_put(ctrl, &cmdreq);
-	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF, false);
-	/*
-	 * blocked here, until call back called
-	 */
+	mdss_dsi_cmd_mdp_busy(ctrl_pdata);
+	mdss_bus_bandwidth_ctrl(1);
+	mdss_dsi_clk_ctrl(ctrl_pdata, 1);
 
-	return 0;
+	mdss_dsi_op_mode_config(DSI_CMD_MODE, pdata);
+
+	return ret;
 }
 
-static void panel_cmds_send(struct mdss_dsi_ctrl_pdata *ctrl,
-			struct dsi_cmd_desc *cmds, int cmd_cnt,
-			int link_state)
+static int post_reg_access(struct msm_fb_data_type *mfd)
 {
-	struct dcs_cmd_req cmdreq;
-	struct mdss_panel_info *pinfo;
+	struct mdss_panel_data *pdata;
+	int ret = 0;
+	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
 
-	pinfo = &(ctrl->panel_data.panel_info);
+	pdata = dev_get_platdata(&mfd->pdev->dev);
+	if (!pdata) {
+		pr_err("%s: no panel connected\n", __func__);
+		return -ENODEV;
+	}
 
-	memset(&cmdreq, 0, sizeof(cmdreq));
-	cmdreq.cmds = cmds;
-	cmdreq.cmds_cnt = cmd_cnt;
-	cmdreq.flags = CMD_REQ_COMMIT;
+	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
+				panel_data);
 
-	/* Panel ON/Off commands should be sent in DSI Low Power Mode */
-	if (link_state == DSI_LP_MODE)
-		cmdreq.flags  |= CMD_REQ_LP_MODE;
-
-	cmdreq.rlen = 0;
-	cmdreq.cb = NULL;
-
-	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON, false);
-	mdss_dsi_cmdlist_put(ctrl, &cmdreq);
+	mdss_dsi_clk_ctrl(ctrl_pdata, 0);
+	mdss_bus_bandwidth_ctrl(0);
+	mdss_dsi_op_mode_config(pdata->panel_info.mipi.mode, pdata);
 	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF, false);
+
+	return ret;
 }
 
 static ssize_t reg_read(struct file *file, const char __user *ubuf,
@@ -258,7 +256,7 @@ static ssize_t reg_read(struct file *file, const char __user *ubuf,
 	struct mdss_panel_data *pdata;
 	struct mdss_mdp_ctl *ctl;
 	u8 params[3]; /* No more than reg + two parameters is allowed */
-	char *buf, *rbuf;
+	char *buf;
 	const char *p;
 	int ret;
 	int nbr_bytes_to_read;
@@ -302,7 +300,7 @@ static ssize_t reg_read(struct file *file, const char __user *ubuf,
 	ret = get_cmd_type(buf, &cmd);
 	if (ret) {
 		update_res_buf("Read - unknown type\n");
-		goto fail_free_buf;
+		goto fail_free_all;
 	}
 
 	p = buf;
@@ -311,7 +309,8 @@ static ssize_t reg_read(struct file *file, const char __user *ubuf,
 	/* Get nbr_bytes_to_read */
 	if (sscanf(p, "%d", &nbr_bytes_to_read) != 1) {
 		update_res_buf("Read - parameter error\n");
-		goto fail_free_buf;
+		ret = -EINVAL;
+		goto fail_free_all;
 	}
 
 	while (isxdigit(*p) || (*p == 'x'))
@@ -322,7 +321,11 @@ static ssize_t reg_read(struct file *file, const char __user *ubuf,
 
 	ret = get_parameters(p, params, ARRAY_SIZE(params), &i);
 	if (ret)
-		goto fail_free_buf;
+		goto fail_free_all;
+
+	ret = prepare_for_reg_access(mfd);
+	if (ret)
+		goto fail_free_all;
 
 	if (cmd == DCS) {
 		dsi.dchdr.dtype = DTYPE_DCS_READ;
@@ -350,27 +353,19 @@ static ssize_t reg_read(struct file *file, const char __user *ubuf,
 		pr_err("%s: payload[%d] = 0x%x\n",
 			__func__, j, dsi.payload[j]);
 
-	if (nbr_bytes_to_read < 1)
-		nbr_bytes_to_read = 1;
+	mdss_dsi_cmds_rx(ctrl_pdata, &dsi, nbr_bytes_to_read);
 
-	rbuf = kzalloc(sizeof(char) * nbr_bytes_to_read, GFP_KERNEL);
-	if (!rbuf) {
-		pr_err("%s: Failed to allocate buffer\n", __func__);
-		goto fail_free_buf;
-	}
+	ret = post_reg_access(mfd);
+	if (ret)
+		goto fail_free_all;
 
-	panel_cmd_read(ctrl_pdata, &dsi, NULL, rbuf, nbr_bytes_to_read);
+	print_params(dsi.dchdr.dtype, params[0], ctrl_pdata->rx_buf.len,
+			ctrl_pdata->rx_buf.data);
 
 	mutex_unlock(&ctl->lock);
 
-	print_params(dsi.dchdr.dtype, params[0], nbr_bytes_to_read,
-			rbuf);
-
-	if (rbuf)
-		kzfree(rbuf);
-fail_free_buf:
-	if (buf)
-		kzfree(buf);
+fail_free_all:
+	kfree(buf);
 exit:
 	return count;
 }
@@ -434,6 +429,7 @@ static ssize_t reg_write(struct file *file, const char __user *ubuf,
 	/* Get first param, Register */
 	if (sscanf(p, "%4hhx", &data[0]) != 1) {
 		update_res_buf("Write - parameter error\n");
+		ret = -EINVAL;
 		goto fail_free_all;
 	}
 	i++;
@@ -442,6 +438,10 @@ static ssize_t reg_write(struct file *file, const char __user *ubuf,
 		p++;
 
 	ret = get_parameters(p, data, ARRAY_SIZE(data) - 1, &i);
+	if (ret)
+		goto fail_free_all;
+
+	ret = prepare_for_reg_access(mfd);
 	if (ret)
 		goto fail_free_all;
 
@@ -478,15 +478,18 @@ static ssize_t reg_write(struct file *file, const char __user *ubuf,
 	for (j = 0; j < i; j++)
 		pr_err("%s: payload[%d] = 0x%x\n",
 			__func__, j, dsi.payload[j]);
+	mdss_dsi_cmds_tx(ctrl_pdata, &dsi, 1);
 
-	panel_cmds_send(ctrl_pdata, &dsi, 1, DSI_LP_MODE);
+	ret = post_reg_access(mfd);
+	if (ret)
+		goto fail_free_all;
 
 	print_params(dsi.dchdr.dtype, data[0], i, dsi.payload);
 
 	mutex_unlock(&ctl->lock);
 
 fail_free_all:
-	kzfree(buf);
+	kfree(buf);
 exit:
 	return count;
 }
