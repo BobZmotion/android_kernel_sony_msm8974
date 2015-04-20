@@ -490,6 +490,11 @@ static int rfcomm_sock_accept(struct socket *sock, struct socket *newsock, int f
 		goto done;
 	}
 
+	if (sk->sk_state != BT_LISTEN) {
+		err = -EBADFD;
+		goto done;
+	}
+
 	if (sk->sk_type != SOCK_STREAM) {
 		err = -EINVAL;
 		goto done;
