@@ -812,6 +812,10 @@
 			<&pm8941_gpios 14 0>;
 	};
 
+	qcom,wdt@f9017000 {
+		qcom,bark-time = <12000>;
+	};
+
 	qcom,msm-thermal {
 		qcom,pmic-sw-mode-regs = "vdd_dig";
 	};
@@ -1593,7 +1597,7 @@
 };
 
 &mdss_fb0 {
-	qcom,memory-reservation-size = <0x1000000>; /* size 16MB */
+	linux,contiguous-region = <&fb_mem>;
 };
 
 &mdss_dsi0 {
