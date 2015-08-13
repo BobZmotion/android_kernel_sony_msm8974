@@ -1631,3 +1631,13 @@
 			qcom,supply-post-off-sleep = <0>;
 	};
 };
+
+/ {
+	memory {
+		fb_mem: fb_region@0 {
+			linux,contiguous-region;
+			reg = <0 0x800000>;
+			label = "fb_mem";
+		};
+	};
+};
